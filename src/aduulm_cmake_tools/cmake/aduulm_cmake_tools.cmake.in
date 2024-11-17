@@ -1,0 +1,717 @@
+if(_ADUULM_CMAKE_TOOLS_INCLUDED_)
+    return()
+endif()
+set(_ADUULM_CMAKE_TOOLS_INCLUDED_ TRUE)
+
+# Set the cmake install path
+if(IS_ROS)
+  if (NOT @DEVELSPACE@ STREQUAL "")
+      if("@DEVELSPACE@" STREQUAL "TRUE")
+        # cmake dir in develspace
+        list(APPEND CMAKE_MODULE_PATH "@PROJECT_SOURCE_DIR@/cmake/Modules/")
+      else()
+        # cmake dir in installspace
+        list(APPEND CMAKE_MODULE_PATH "@PKG_CMAKE_DIR@/Modules/")
+      endif()
+  else()
+    list(APPEND CMAKE_MODULE_PATH "@CMAKE_INSTALL_PREFIX@/share/aduulm_cmake_tools/cmake/Modules/")
+  endif()
+else()
+  list(APPEND CMAKE_MODULE_PATH "@CMAKE_CURRENT_LIST_DIR@/../cmake/Modules/")
+endif()
+
+set(ADUULM_CMAKE_TOOLS_DIR "@CMAKE_CURRENT_LIST_DIR@/..")
+
+if(${CMAKE_VERSION} VERSION_GREATER "3.18.0")
+  cmake_policy(SET CMP0104 OLD)
+  SET(CMAKE_CUDA_ARCHITECTURES 75;86)
+endif()
+
+# Set IS_ROS_DEVEL var
+STRING(REGEX MATCH "/devel$" IS_ROS_DEVEL "${CMAKE_INSTALL_PREFIX}")
+
+# colour support
+if (NOT WIN32)
+  string(ASCII 27 Esc)
+  set(ColourReset "${Esc}[0m")
+  set(ColourBold  "${Esc}[1m")
+  set(ColourRed         "${Esc}[31m")
+  set(ColourGreen       "${Esc}[32m")
+  set(ColourYellow      "${Esc}[33m")
+  set(ColourBlue        "${Esc}[34m")
+  set(ColourMagenta     "${Esc}[35m")
+  set(ColourCyan        "${Esc}[36m")
+  set(ColourWhite       "${Esc}[37m")
+  set(ColourBoldRed     "${Esc}[1;31m")
+  set(ColourBoldGreen   "${Esc}[1;32m")
+  set(ColourBoldYellow  "${Esc}[1;33m")
+  set(ColourBoldBlue    "${Esc}[1;34m")
+  set(ColourBoldMagenta "${Esc}[1;35m")
+  set(ColourBoldCyan    "${Esc}[1;36m")
+  set(ColourBoldWhite   "${Esc}[1;37m")
+
+  set(ColourBuildInfo "${ColourBoldBlue}")
+endif()
+
+# Output directories
+set(INCLUDE_INSTALL_DIR include/ CACHE STRING "Path to installed include directory")
+set(LIB_INSTALL_DIR lib/ CACHE STRING "Path to installed lib directory")
+set(BIN_INSTALL_DIR bin/ CACHE STRING "Path to installed bin directory")
+set(SHARE_INSTALL_DIR share/ CACHE STRING "Path to installed share directory")
+
+find_package(ament_cmake QUIET)
+set(IS_ROS2 FALSE)
+if (ament_cmake_FOUND)
+  set(IS_ROS2 TRUE)
+endif()
+
+# Find python to prevent pybind11 errors, see https://gitlab.kitware.com/cmake/cmake/-/issues/23133
+find_package(Python REQUIRED COMPONENTS Interpreter Development)
+if(IS_ROS2)
+  ament_get_python_install_dir(PYTHON_INSTALL_DIR)
+else()
+  find_package(PythonInterp QUIET)
+  if(PYTHONINTERP_FOUND)
+    message(STATUS "Using Python version " ${PYTHON_VERSION_STRING} " with executable " ${PYTHON_EXECUTABLE})
+    if(${PYTHON_VERSION_MAJOR} MATCHES "2")
+      set(PYTHON_INSTALL_DIR ${LIB_INSTALL_DIR}/python${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}/dist-packages)
+    else()
+      set(PYTHON_INSTALL_DIR ${LIB_INSTALL_DIR}/python${PYTHON_VERSION_MAJOR}/dist-packages)
+    endif()
+  else()
+    message(WARNING "Python components not found, corresponding install directories are not set")
+  endif()
+endif()
+
+macro(find_aduulm_package _pkg_name_)
+  if(IS_ROS)
+    find_package(${_pkg_name_} ${ARGN})
+  else()
+    if(TARGET ${_pkg_name_} OR TARGET ${_pkg_name_}::${_pkg_name_})
+      set(${_pkg_name_}_FOUND 1)
+    else()
+      set(${_pkg_name_}_FOUND 0)
+    endif()
+  endif()
+endmacro()
+
+macro(link_aduulm_package_targets)
+  set(options "SUPPRESS_WARN_PCK_TARGET")
+  set(oneValueArgs TARGET ACCESS)
+  set(multiValueArgs PACKAGE_TARGETS)
+  cmake_parse_arguments(link_aduulm_package_targets "${options}" "${oneValueArgs}"
+                          "${multiValueArgs}" ${ARGN} )
+
+  set(target ${link_aduulm_package_targets_TARGET})
+  set(access ${link_aduulm_package_targets_ACCESS})
+  foreach(package_target ${link_aduulm_package_targets_PACKAGE_TARGETS})
+    if(NOT TARGET ${package_target})
+      if(${package_target}_INCLUDE_DIRS OR ${package_target}_LIBRARIES)
+        if (NOT link_aduulm_package_targets_SUPPRESS_WARN_PCK_TARGET)
+          message("You specified ${package_target} as a PACKAGE_TARGET. This will only include the headers and libraries specified in ${package_target}_INCLUDE_DIRS and ${package_target}_LIBRARIES, respectively. Prefer linking against a specific target, e.g. ${package_target}::${package_target}")
+        endif()
+        # message("${package_target} is a package")
+        # message("${${package_target}_INCLUDE_DIRS}")
+        # message("${${package_target}_LIBRARIES}")
+        if("${access}" STREQUAL "PUBLIC" OR "${access}" STREQUAL "")
+          target_include_directories(${target} SYSTEM PUBLIC ${${package_target}_INCLUDE_DIRS})
+          target_link_libraries(${target} PUBLIC ${${package_target}_LIBRARIES})
+        elseif("${access}" STREQUAL "PRIVATE")
+          target_include_directories(${target} SYSTEM PRIVATE ${${package_target}_INCLUDE_DIRS})
+          target_link_libraries(${target} PRIVATE ${${package_target}_LIBRARIES})
+        elseif("${access}" STREQUAL "INTERFACE")
+          target_include_directories(${target} SYSTEM INTERFACE ${${package_target}_INCLUDE_DIRS})
+          target_link_libraries(${target} INTERFACE ${${package_target}_LIBRARIES})
+        else()
+          message(FATAL_ERROR "Invalid value for 'ACCESS'!")
+        endif()
+      else()
+        message(FATAL_ERROR "PACKAGE_TARGET ${package_target} not found! Did you forget a call to find_aduulm_package() (or does the library not export this target)?")
+      endif()
+    else()
+      # message("${package_target} is a target")
+      if(NOT IS_ROS)
+        if("${package_target}" MATCHES "::")
+          string(REGEX REPLACE "::.*$" "" package_toplevel_target "${package_target}")
+          add_dependencies(${target} ${package_toplevel_target})
+        else()
+          add_dependencies(${target} ${package_target})
+        endif()
+      endif()
+      if("${access}" STREQUAL "PUBLIC" OR "${access}" STREQUAL "")
+        target_link_libraries(${target} PUBLIC "${package_target}")
+      elseif("${access}" STREQUAL "PRIVATE")
+        target_link_libraries(${target} PRIVATE "${package_target}")
+      elseif("${access}" STREQUAL "INTERFACE")
+        target_link_libraries(${target} INTERFACE "${package_target}")
+      else()
+        message(FATAL_ERROR "Invalid value for 'ACCESS'!")
+      endif()
+    endif()
+  endforeach(package_target)
+endmacro()
+
+macro(get_version_string_from_package_xml path)
+  if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${path}/package.xml")
+    message(WARNING "Could not extract version info from non-existing file: ${CMAKE_CURRENT_SOURCE_DIR}/${path}/package.xml")
+    return()
+  endif()
+
+  execute_process(COMMAND sh -c "grep \"<name>\" package.xml | sed -e 's+ *<name>\\(.*\\)</name>+\\1+'"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${path}"
+    OUTPUT_VARIABLE package_name
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+
+  execute_process(COMMAND sh -c "grep \"<version>\" package.xml | sed -e 's+ *<version>\\(.*\\)</version>+\\1+'"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${path}"
+    OUTPUT_VARIABLE package_version
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+endmacro()
+
+macro(show_build_info msg)
+if(IS_ADTF)
+  message("${ColourBuildInfo}${package_name}(v. ${package_version})::${PROJECT_NAME} ${msg}${ColourReset}")
+endif()
+endmacro()
+
+macro(setup_git_hooks)
+  set(GIT_HOOKS_PATH "${ADUULM_CMAKE_TOOLS_DIR}/git_hooks")
+  add_subdirectory("${GIT_HOOKS_PATH}" "${CMAKE_CURRENT_BINARY_DIR}/.hooks")
+  create_git_hook(${ARGN})
+endmacro()
+
+
+
+
+
+
+# ROS2 convenience macros
+
+macro(aduulm_no_autolink_dependencies package_name)
+    list(APPEND ADUULM_NO_AUTOLINK_DEPENDENCIES ${package_name})
+endmacro()
+
+macro(aduulm_filter_autolink_dependencies deps filtered_deps)
+  # check auto_link_deps
+  foreach( package_name ${ADUULM_NO_AUTOLINK_DEPENDENCIES})
+    if(NOT (${package_name} IN_LIST ${deps}))
+      message(WARNING "package ${package_name} was specifically excluded from auto_link but is not used for auto_link anyway")
+    endif()
+  endforeach()
+
+  # filter list
+  if (ADUULM_NO_AUTOLINK_DEPENDENCIES)
+    foreach( package_name ${${deps}})
+      # append all deps which are not specifically excluded to the filtered list
+      if(NOT (${package_name} IN_LIST ADUULM_NO_AUTOLINK_DEPENDENCIES))
+        list(APPEND ${filtered_deps} ${package_name})
+      endif()
+    endforeach()
+  else()
+    set(${filtered_deps} ${${deps}})
+  endif()
+endmacro()
+
+macro(aduulm_init_ros2_package)
+  find_package(ament_cmake REQUIRED)
+  find_package(ament_cmake_auto REQUIRED)
+  find_package(ament_cmake_python REQUIRED)
+  find_package(ament_cmake_gtest REQUIRED)
+
+  get_version_string_from_package_xml(.)
+  ament_auto_find_build_dependencies()
+  # un-set CMAKE_NO_SYSTEM_FROM_IMPORTED which may be set by mrt_cmake_modules
+  # see https://github.com/KIT-MRT/mrt_cmake_modules/issues/26
+  set(CMAKE_NO_SYSTEM_FROM_IMPORTED FALSE)
+endmacro()
+
+macro(aduulm_generate_ros2_messages target)
+  # Manually glob for files
+  set(${PROJECT_NAME}_interface_files "")
+  foreach(_type msg srv action)
+    file(GLOB_RECURSE _files RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${_type}/**/*.${_type} ${_type}/*.${_type})
+    # first copy all files to dedicated msg/srv/action folders, so that no more subdirectories exist
+    # this is because otherwise the .msg/.srv/.action files end up in weird locations inside the install folder
+    # which trips up tools such as the rosbag recorder/writer.
+    # Subdirectories inside msg/srv/action seem not properly supported, maybe make a PR someday...
+    file(COPY ${_files} DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/aduulm_tmp/${_type}/)
+    file(GLOB_RECURSE _files RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/aduulm_tmp/${_type}/*.${_type})
+    list(APPEND ${PROJECT_NAME}_interface_files ${_files})
+  endforeach()
+  rosidl_generate_interfaces(
+     ${target}
+     ${${PROJECT_NAME}_interface_files}
+     ${ARGN})
+endmacro()
+
+macro(aduulm_target_link_messages target interface_target)
+  set(typesupport_target ${interface_target}__rosidl_typesupport_cpp)
+  add_dependencies(${target} ${interface_target})
+  get_target_property(_type ${target} TYPE)
+  set(_interface "PUBLIC")
+  if (${_type} STREQUAL "INTERFACE_LIBRARY")
+    set(_interface "INTERFACE")
+  endif()
+  target_link_libraries(${target} ${_interface} ${typesupport_target})
+endmacro()
+
+macro(aduulm_register_public_dependency_target target)
+  list(APPEND ${PROJECT_NAME}_TARGET_DEPENDENCIES ${target})
+endmacro()
+
+macro(aduulm_register_public_dependency_includes)
+  list(APPEND ${PROJECT_NAME}_EXTRA_INCS ${ARGN})
+endmacro()
+
+macro(aduulm_register_public_dependency_libraries)
+  list(APPEND ${PROJECT_NAME}_EXTRA_LIBS ${ARGN})
+endmacro()
+
+function(aduulm_ros2_target_dependencies target)
+  if(NOT TARGET ${target})
+    message(FATAL_ERROR "ament_target_dependencies() the first argument must be a valid target name")
+  endif()
+  if(${ARGC} GREATER 0)
+    cmake_parse_arguments(ARG "INTERFACE;PUBLIC;SYSTEM" "" "" ${ARGN})
+    set(ARGVIND 1)
+    set(system_keyword "")
+    set(optional_keyword "")
+    set(required_keyword "PUBLIC")
+    if(ARG_SYSTEM)
+      if(NOT "${ARGV${ARGVIND}}" STREQUAL "SYSTEM")
+        message(FATAL_ERROR "ament_target_dependencies() SYSTEM keyword is only allowed before the package names and other keywords")
+      endif()
+      set(system_keyword SYSTEM)
+      math(EXPR ARGVIND "${ARGVIND} + 1")
+    endif()
+    if(ARG_INTERFACE)
+      if(NOT "${ARGV${ARGVIND}}" STREQUAL "INTERFACE")
+        message(FATAL_ERROR "ament_target_dependencies() INTERFACE keyword is only allowed before the package names")
+      endif()
+      set(optional_keyword INTERFACE)
+      set(required_keyword INTERFACE)
+    endif()
+    if(ARG_PUBLIC)
+      if(NOT "${ARGV${ARGVIND}}" STREQUAL "PUBLIC")
+        message(FATAL_ERROR "ament_target_dependencies() PUBLIC keyword is only allowed before the package names")
+      endif()
+      set(optional_keyword PUBLIC)
+    endif()
+    set(definitions "")
+    set(include_dirs "")
+    set(interfaces "")
+    set(libraries "")
+    set(link_flags "")
+    foreach(package_name ${ARG_UNPARSED_ARGUMENTS})
+      if(NOT "${${package_name}_FOUND}")
+        message(FATAL_ERROR "ament_target_dependencies() the passed package name '${package_name}' was not found before")
+      endif()
+      # if a package provides modern CMake interface targets use them
+      # exclusively assuming the classic CMake variables only exist for
+      # backward compatibility
+      set(use_modern_cmake FALSE)
+      if(NOT "${${package_name}_TARGETS}" STREQUAL "")
+        foreach(_target ${${package_name}_TARGETS})
+          # only use actual targets
+          # in case a package uses this variable for other content
+          if(TARGET "${_target}")
+            list_append_unique(interfaces ${_target})
+            set(use_modern_cmake TRUE)
+          endif()
+        endforeach()
+      endif()
+      if(NOT use_modern_cmake AND NOT "${${package_name}_INTERFACES}" STREQUAL "")
+        foreach(_interface ${${package_name}_INTERFACES})
+          # only use actual targets
+          # in case a package uses this variable for other content
+          if(TARGET "${_interface}")
+            list_append_unique(interfaces ${_interface})
+            set(use_modern_cmake TRUE)
+          endif()
+        endforeach()
+        if(use_modern_cmake)
+          message(DEPRECATION
+            "Package ${package_name} is exporting the variable "
+            "${package_name}_INTERFACES which is deprecated, it should export
+            ${package_name}_TARGETS instead")
+        endif()
+      endif()
+      if(NOT use_modern_cmake)
+        # otherwise use the classic CMake variables
+        list_append_unique(definitions ${${package_name}_DEFINITIONS})
+        list_append_unique(include_dirs ${${package_name}_INCLUDE_DIRS})
+        foreach(library ${${package_name}_LIBRARIES})
+          if(NOT "${${package_name}_LIBRARY_DIRS}" STREQUAL "")
+            if(NOT IS_ABSOLUTE ${library} OR NOT EXISTS ${library})
+              find_library(lib NAMES ${library} PATHS ${${package_name}_LIBRARY_DIRS} NO_DEFAULT_PATH)
+              if(lib)
+                set(library ${lib})
+              endif()
+            endif()
+          endif()
+          # un-set NO_SYSTEM_FROM_IMPORTED property that was set due to
+          # CMAKE_NO_SYSTEM_FROM_IMPORTED having been set by mrt_cmake_modules
+          if(TARGET ${library})
+            set_target_properties(${library} PROPERTIES NO_SYSTEM_FROM_IMPORTED FALSE)
+          endif()
+          list(APPEND libraries ${library})
+        endforeach()
+        list_append_unique(link_flags ${${package_name}_LINK_FLAGS})
+      endif()
+    endforeach()
+    if(NOT ARG_INTERFACE)
+      target_compile_definitions(${target}
+        ${required_keyword} ${definitions})
+      # the interface include dirs must be ordered
+      set(interface_include_dirs)
+      foreach(interface ${interfaces})
+        get_target_property(_include_dirs ${interface} INTERFACE_INCLUDE_DIRECTORIES)
+        if(_include_dirs)
+          list_append_unique(interface_include_dirs ${_include_dirs})
+        endif()
+      endforeach()
+      ament_include_directories_order(ordered_interface_include_dirs ${interface_include_dirs})
+      # the interface include dirs are used privately to ensure proper order
+      # and the interfaces cover the public case
+      target_include_directories(${target} ${system_keyword}
+        PRIVATE ${ordered_interface_include_dirs})
+    endif()
+    ament_include_directories_order(ordered_include_dirs ${include_dirs})
+    target_link_libraries(${target}
+      ${optional_keyword} ${interfaces})
+    target_include_directories(${target} ${system_keyword}
+      ${required_keyword} ${ordered_include_dirs})
+    if(NOT ARG_INTERFACE)
+      ament_libraries_deduplicate(unique_libraries ${libraries})
+      target_link_libraries(${target}
+        ${optional_keyword} ${unique_libraries})
+      foreach(link_flag IN LISTS link_flags)
+        set_property(TARGET ${target} APPEND_STRING PROPERTY LINK_FLAGS " ${link_flag} ")
+      endforeach()
+    endif()
+  endif()
+endfunction()
+
+macro(aduulm_add_ros2_library target)
+  cmake_parse_arguments(ARG
+    "STATIC;SHARED;MODULE;EXCLUDE_FROM_ALL;INTERFACE"
+    "DIRECTORY"
+    ""
+    ${ARGN})
+  if(NOT ARG_DIRECTORY AND NOT ARG_UNPARSED_ARGUMENTS AND NOT ARG_INTERFACE)
+    message(FATAL_ERROR "aduulm_add_ros2_library() called without any source "
+      "files and without a DIRECTORY argument")
+  endif()
+  set(_interface "PUBLIC")
+  set(_interface2 "")
+  if(ARG_INTERFACE)
+    set(_interface "INTERFACE")
+    set(_interface2 "INTERFACE")
+  endif()
+
+  set(_source_files "")
+  if(ARG_DIRECTORY)
+    # glob all source files
+    file(
+      GLOB_RECURSE
+      _source_files
+      RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
+      "${ARG_DIRECTORY}/*.c"
+      "${ARG_DIRECTORY}/*.cc"
+      "${ARG_DIRECTORY}/*.cpp"
+      "${ARG_DIRECTORY}/*.cxx"
+      "${ARG_DIRECTORY}/*.cu"
+    )
+    if(NOT _source_files)
+      message(FATAL_ERROR "ament_auto_add_library() no source files found in "
+        "directory '${CMAKE_CURRENT_SOURCE_DIR}/${ARG_DIRECTORY}'")
+    endif()
+  endif()
+
+  # parse again to "remove" custom arguments
+  cmake_parse_arguments(ARG "" "DIRECTORY;INTERFACE" "" ${ARGN})
+  add_library(${target} ${_interface2} ${ARG_UNPARSED_ARGUMENTS} ${_source_files})
+  target_compile_definitions(${target} ${_interface} "-D${package_name}_VERSION=\"${package_version}\"")
+
+  target_include_directories(${target}
+    ${_interface}
+      $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+  )
+  aduulm_filter_autolink_dependencies(${PROJECT_NAME}_FOUND_BUILD_DEPENDS ${PROJECT_NAME}_FOUND_BUILD_DEPENDS_FILTERED)
+  aduulm_ros2_target_dependencies(${target}
+    SYSTEM ${_interface}
+      ${${PROJECT_NAME}_FOUND_BUILD_DEPENDS_FILTERED}
+  )
+  if(NOT "${${PROJECT_NAME}_TARGET_DEPENDENCIES}" STREQUAL "")
+    target_link_libraries(${target} ${_interface} ${${PROJECT_NAME}_TARGET_DEPENDENCIES})
+  endif()
+  if(NOT "${${PROJECT_NAME}_EXTRA_LIBS}" STREQUAL "")
+    target_link_libraries(${target} ${_interface} ${${PROJECT_NAME}_EXTRA_LIBS})
+  endif()
+  if(NOT "${${PROJECT_NAME}_EXTRA_INCS}" STREQUAL "")
+    target_include_directories(${target} SYSTEM ${_interface} ${${PROJECT_NAME}_EXTRA_INCS})
+  endif()
+
+  list(APPEND ${PROJECT_NAME}_LIBRARIES "${target}")
+
+  if(NOT ${PROJECT_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
+    set(${PROJECT_NAME}_LIBRARIES ${${PROJECT_NAME}_LIBRARIES} PARENT_SCOPE)
+  endif()
+endmacro()
+
+macro(aduulm_add_ros2_executable target)
+  cmake_parse_arguments(ARG
+    ""
+    "DIRECTORY"
+    ""
+    ${ARGN})
+  if(NOT ARG_DIRECTORY AND NOT ARG_UNPARSED_ARGUMENTS)
+    message(FATAL_ERROR "aduulm_add_ros2_library() called without any source "
+      "files and without a DIRECTORY argument")
+  endif()
+
+  set(_source_files "")
+  if(ARG_DIRECTORY)
+    # glob all source files
+    file(
+      GLOB_RECURSE
+      _source_files
+      RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
+      "${ARG_DIRECTORY}/*.c"
+      "${ARG_DIRECTORY}/*.cc"
+      "${ARG_DIRECTORY}/*.cpp"
+      "${ARG_DIRECTORY}/*.cxx"
+      "${ARG_DIRECTORY}/*.cu"
+    )
+    if(NOT _source_files)
+      message(FATAL_ERROR "ament_auto_add_library() no source files found in "
+        "directory '${CMAKE_CURRENT_SOURCE_DIR}/${ARG_DIRECTORY}'")
+    endif()
+  endif()
+
+  # parse again to "remove" custom arguments
+  cmake_parse_arguments(ARG "" "DIRECTORY" "" ${ARGN})
+  add_executable(${target} ${ARG_UNPARSED_ARGUMENTS} ${_source_files})
+  target_compile_definitions(${target} PUBLIC "-D${package_name}_VERSION=\"${package_version}\"")
+
+  target_include_directories(${target}
+    PUBLIC
+      $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+  )
+  aduulm_filter_autolink_dependencies(${PROJECT_NAME}_FOUND_BUILD_DEPENDS ${PROJECT_NAME}_FOUND_BUILD_DEPENDS_FILTERED)
+  aduulm_ros2_target_dependencies(${target}
+    SYSTEM PUBLIC
+      ${${PROJECT_NAME}_FOUND_BUILD_DEPENDS_FILTERED}
+  )
+  if(NOT "${${PROJECT_NAME}_TARGET_DEPENDENCIES}" STREQUAL "")
+    target_link_libraries(${target} PUBLIC ${${PROJECT_NAME}_TARGET_DEPENDENCIES})
+  endif()
+  if(NOT "${${PROJECT_NAME}_EXTRA_LIBS}" STREQUAL "")
+    target_link_libraries(${target} PUBLIC ${${PROJECT_NAME}_EXTRA_LIBS})
+  endif()
+  if(NOT "${${PROJECT_NAME}_EXTRA_INCS}" STREQUAL "")
+    target_include_directories(${target} SYSTEM PUBLIC ${${PROJECT_NAME}_EXTRA_INCS})
+  endif()
+
+  list(APPEND ${PROJECT_NAME}_EXECUTABLES "${target}")
+
+  if(NOT ${PROJECT_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
+    set(${PROJECT_NAME}_EXECUTABLES ${${PROJECT_NAME}_EXECUTABLES} PARENT_SCOPE)
+  endif()
+endmacro()
+
+macro(aduulm_add_ros2_python_binding target)
+  cmake_parse_arguments(ARG "" "" "" ${ARGN})
+  if(NOT ARG_UNPARSED_ARGUMENTS)
+    message(FATAL_ERROR
+      "aduulm_add_ros2_python_binding() must be invoked with at least one source file")
+  endif()
+
+  find_package(pybind11 REQUIRED)
+  pybind11_add_module(${target} ${ARG_UNPARSED_ARGUMENTS})
+
+  target_include_directories(${target}
+    PUBLIC
+      $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+  )
+  aduulm_filter_autolink_dependencies(${PROJECT_NAME}_FOUND_BUILD_DEPENDS ${PROJECT_NAME}_FOUND_BUILD_DEPENDS_FILTERED)
+  ament_target_dependencies(${target}
+    SYSTEM PUBLIC
+      ${${PROJECT_NAME}_FOUND_BUILD_DEPENDS_FILTERED}
+  )
+
+  install(TARGETS ${target}
+    LIBRARY DESTINATION ${PYTHON_INSTALL_DIR}/${PROJECT_NAME}_py/ COMPONENT Runtime
+  )
+endmacro()
+
+macro(aduulm_add_lib_python_binding target)
+  cmake_parse_arguments(ARG "" "" "" ${ARGN})
+  if(NOT ARG_UNPARSED_ARGUMENTS)
+    message(FATAL_ERROR
+      "aduulm_add_ros2_python_binding() must be invoked with at least one source file")
+  endif()
+
+  find_package(pybind11 REQUIRED)
+  pybind11_add_module(${target} ${ARG_UNPARSED_ARGUMENTS})
+
+  target_include_directories(${target}
+    PUBLIC
+      $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+  )
+
+  install(TARGETS ${target}
+    LIBRARY DESTINATION ${PYTHON_INSTALL_DIR}/${PROJECT_NAME}_py/ COMPONENT Runtime
+  )
+endmacro()
+
+macro(aduulm_install_ros2_python_code dirname)
+  ament_python_install_package(${dirname} ${ARGN})
+endmacro()
+
+macro(aduulm_create_ros2_package)
+  if(NOT ${PROJECT_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
+    message(FATAL_ERROR "macro aduulm_create_ros2_package() may only be called from project root directory!")
+  endif()
+
+  cmake_parse_arguments(__ARG "INSTALL_TO_PATH" "" "INSTALL_TO_SHARE" ${ARGN})
+  # passing all unparsed arguments to ament_package()
+
+  # export all found build dependencies which are also run dependencies
+  set(_run_depends
+    ${${PROJECT_NAME}_BUILD_EXPORT_DEPENDS}
+    ${${PROJECT_NAME}_BUILDTOOL_EXPORT_DEPENDS}
+    ${${PROJECT_NAME}_EXEC_DEPENDS})
+  aduulm_filter_autolink_dependencies(${PROJECT_NAME}_FOUND_BUILD_DEPENDS ${PROJECT_NAME}_FOUND_BUILD_DEPENDS_FILTERED)
+  foreach(_dep
+      ${${PROJECT_NAME}_FOUND_BUILD_DEPENDS}
+      ${${PROJECT_NAME}_FOUND_BUILDTOOL_DEPENDS_FILTERED})
+    if(_dep IN_LIST _run_depends)
+      ament_export_dependencies("${_dep}")
+    endif()
+  endforeach()
+
+  # export and install include directory of this package if it has one
+  set(${PROJECT_NAME}_INCS_TMP "")
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    list(APPEND ${PROJECT_NAME}_INCS_TMP "include")
+    install(DIRECTORY include/ DESTINATION include)
+  endif()
+  list(APPEND ${PROJECT_NAME}_INCS_TMP ${${PROJECT_NAME}_EXTRA_INCS})
+
+  # export and install all libraries
+  foreach(_dep ${${PROJECT_NAME}_LIBRARIES})
+    get_target_property(_type ${_dep} TYPE)
+    if (NOT ${_type} STREQUAL "INTERFACE_LIBRARY")
+      list(APPEND ${PROJECT_NAME}_LIBRARIES_TEST ${_dep})
+      continue()
+    endif()
+  endforeach()
+  foreach(_dep ${${PROJECT_NAME}_TARGET_DEPENDENCIES} ${${PROJECT_NAME}_EXTRA_LIBS})
+    if (NOT TARGET ${_dep})
+      list(APPEND ${PROJECT_NAME}_LIBRARIES_TEST ${_dep})
+      continue()
+    endif()
+
+    get_target_property(_incs ${_dep} INTERFACE_INCLUDE_DIRECTORIES)
+    foreach(_inc ${_incs})
+      if("${_inc}" MATCHES "\\$")
+        message("INTERFACE_INCLUDE_DIRECTORIES contains generator expressions, these parts will be skipped: ${_inc}")
+      else()
+        list(APPEND ${PROJECT_NAME}_INCS_TMP ${_inc})
+      endif()
+    endforeach()
+
+    get_target_property(_type ${_dep} TYPE)
+    if (NOT ${_type} STREQUAL "INTERFACE_LIBRARY")
+      list(APPEND ${PROJECT_NAME}_LIBRARIES_TEST ${_dep})
+      continue()
+    endif()
+
+    get_target_property(_libs ${_dep} INTERFACE_LINK_LIBRARIES)
+    foreach(_lib ${_libs})
+      if("${_lib}" MATCHES "\\$")
+        message("INTERFACE_LINK_LIBRARIES contains generator expressions, these parts will be skipped: ${_lib}")
+      else()
+        list(APPEND ${PROJECT_NAME}_LIBRARIES_TEST ${_lib})
+      endif()
+    endforeach()
+  endforeach()
+
+  ament_export_libraries(${${PROJECT_NAME}_LIBRARIES_TEST})
+  if(NOT "${${PROJECT_NAME}_LIBRARIES}" STREQUAL "")
+    ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
+    install(
+      TARGETS ${${PROJECT_NAME}_LIBRARIES}
+      EXPORT export_${PROJECT_NAME}
+      ARCHIVE DESTINATION lib
+      LIBRARY DESTINATION lib
+      RUNTIME DESTINATION bin
+    )
+  endif()
+
+  ament_export_include_directories(${${PROJECT_NAME}_INCS_TMP})
+
+  # install all executables
+  if(NOT "${${PROJECT_NAME}_EXECUTABLES}" STREQUAL "")
+    if(__ARG_INSTALL_TO_PATH)
+      set(_destination "bin")
+    else()
+      set(_destination "lib/${PROJECT_NAME}")
+    endif()
+    install(
+      TARGETS ${${PROJECT_NAME}_EXECUTABLES}
+      DESTINATION ${_destination}
+    )
+  endif()
+
+  # install directories to share
+  foreach(_dir ${__ARG_INSTALL_TO_SHARE})
+    install(
+      DIRECTORY "${_dir}"
+      DESTINATION "share/${PROJECT_NAME}"
+    )
+  endforeach()
+
+  ament_package(${__ARG_UNPARSED__ARGUMENTS})
+endmacro()
+
+macro(aduulm_add_ros2_test target)
+  _ament_cmake_gtest_find_gtest()
+  if(GTEST_FOUND)
+    add_executable("${target}" ${ARGN})
+    target_include_directories("${target}" SYSTEM PUBLIC "${GTEST_INCLUDE_DIRS}")
+    target_link_libraries("${target}" PUBLIC ${GTEST_MAIN_LIBRARIES})
+    target_link_libraries("${target}" PUBLIC ${GTEST_LIBRARIES})
+    if(NOT WIN32)
+      set(THREADS_PREFER_PTHREAD_FLAG ON)
+      find_package(Threads REQUIRED)
+      target_link_libraries("${target}" PUBLIC Threads::Threads)
+    endif()
+
+    set(executable "$<TARGET_FILE:${target}>")
+    set(result_file "${AMENT_TEST_RESULTS_DIR}/${PROJECT_NAME}/${target}.gtest.xml")
+    set(cmd
+      "${executable}"
+      "--gtest_output=xml:${result_file}")
+
+    ament_add_test(
+      "${target}"
+      COMMAND ${cmd}
+      OUTPUT_FILE "${CMAKE_BINARY_DIR}/ament_cmake_gtest/${target}.txt"
+      RESULT_FILE "${result_file}"
+    )
+    set_tests_properties(
+      "${target}"
+      PROPERTIES
+      REQUIRED_FILES "${executable}"
+      LABELS "gtest"
+    )
+  endif()
+endmacro()

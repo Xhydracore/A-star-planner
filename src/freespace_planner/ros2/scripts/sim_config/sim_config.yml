@@ -1,0 +1,9 @@
+# simulation params
+SCENARIO_NAME: "Valet_parking_015"
+#SCENARIO_NAME: "Free_015"
+#SCENARIO_NAME: "depot"
+#SCENARIO_NAME: "Maze"
+#SCENARIO_NAME: "neu-ulm_gm"
+
+# Simulator modes
+ALL_VISIBLE: False

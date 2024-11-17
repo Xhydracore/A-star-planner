@@ -1,0 +1,6 @@
+set(MODULE_NAME "path_planner_lib")
+
+
+set(PYTHON_SRC ${PROJECT_SOURCE_DIR}/python/${MODULE_NAME})
+install(DIRECTORY ${PYTHON_SRC}
+        DESTINATION ${PYTHON_INSTALL_DIR})

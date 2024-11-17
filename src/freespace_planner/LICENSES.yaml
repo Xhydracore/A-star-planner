@@ -1,0 +1,36 @@
+project:
+  - files: *
+    copyright: 2023, Ulm University, Institute of Measurement, Control and Microtechnology
+    license: Apache-2.0
+
+software:
+  - name: reeds_shepp
+    files:
+    - library/src/deps_lib/reeds_shepp.cpp
+    - library/include/deps_lib/reeds_shepp.cpp
+    copyright: 2016, Guan-Horng Liu.
+    license: BSD-3-Clause
+    url: https://github.com/ghliu/pyReedsShepp
+    version: 69aebbb6ad98f38b60e192999a7302d3b74bb7ad
+    modified: true
+
+  - name: VoronoiDiagramGenerator
+    files:
+      - library/src/deps_lib/VoronoiDiagramGenerator.cpp
+      - library/include/deps_lib/VoronoiDiagramGenerator.hpp
+    copyright: 1994 by AT&T Bell Laboratories
+    license: MIT
+    url: https://web.archive.org/web/20131207065132/http://www.skynet.ie/~sos/mapviewer/voronoi.php
+    version: None
+    modified: true
+
+  - name: fitpack
+    files:
+      - library/src/deps_lib/fitpack
+    copyright: 2001-2002 Enthought, Inc. 2003-2023, SciPy Developers. All rights reserved.
+    license: BSD-3-Clause
+    url: https://github.com/scipy/scipy/tree/main/scipy/interpolate/fitpack
+    version: b7a9ae281cb6c3230beb78675a6e4ad0a1789d2c
+    modified: false
+
+licenses:

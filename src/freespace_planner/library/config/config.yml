@@ -1,0 +1,78 @@
+# Planning modes
+ONLY_FORWARD: False
+IS_USHIFT: False
+
+# General planning params
+COMFORT_BRAKE_ACC: 1
+BREAK_ACC: 5
+ENV_UPDATE_T: 0.2
+
+WAYPOINT_TYPE: 0  #0=heuristic reduction, 1=None
+
+DIV_DISTANCE: 10
+REDUCT_DIST: 20
+#WAYPOINT_TYPE: 2  # 0=astar path, 1=heuristic reduction, 2=None
+#DIV_DISTANCE: 999999
+
+MAX_DIST4WAYPOINTS: 50
+WAYPOINT_DIST: 40
+WAYPOINT_DIST_F: 5
+MIN_COLL_DIST: 40  # [m] distance of collision under which a replanning is forced
+MAX_DIST4REPLAN: 10
+INTERP_RES: 0.1
+
+# Grid map
+#GM_RES: 0.15625  # 20/128
+
+MIN_THRESH: 100
+MAX_THRESH: 130
+
+# minipatches
+MAX_PATCH_INS_DIST: 40  # Patches closer are inserted at every timestep to react to immediate changes, the others are inserted at every env recalc
+
+# Patch
+PATCH_PADDING_DIM: 100
+NEAR_PATCH_EDGE_DIM: 75
+
+# Collision Params
+YAW_RES_COLL: 3 # must be a divisor of 15
+DOUBLE_DISK_ROWS: False
+LEN_PER_DISK: 2.0
+
+SAFETY_DISTANCE_M: 0.1
+SEARCH_DIST: 5.0
+
+# Astar config
+#PLANNER_RES: 0.625  # 0.46875
+ASTAR_UNKNOWN_COST: 0
+MAX_EXTRA_NODES_ASTAR: 10000
+HEURISTIC_EARLY_EXIT: True
+
+# Hybrid AStar config
+TURN_ON_POINT_ANGLE: 90
+YAW_RES: 10
+MOTION_RES_MIN: 0.1
+MOTION_RES_MAX: 1.0
+MIN_DIST_VAL: 3
+MAX_DIST_VAL: 10
+H_UNKNOWN_COST: 0  # Attention, if this value is set to high negative values the algorithm explores into infinity the unknown and does not want to reach the goal
+EXTRA_STEER_COST_ANALYTIC: 5
+REAR_AXIS_COST: 70
+TURN_ON_POINT_HORIZON: 15
+TIMEOUT: 2000
+NON_H_NO_OBS_PATCH_DIM: 101
+RA_FREQ: 5
+
+# Reed shepp params
+MAX_EXTRA_NODES_HASTAR: 50
+DIST_THRESH_ANALYTIC_M: 10
+RS_2ND_STEER: 0.5
+
+# Astar without RS extension
+APPROX_GOAL_DIST: 2
+APPROX_GOAL_ANGLE: 25
+
+# Goal check
+GOAL_DIST: 0.1
+GOAL_ANGLE: 5
+MIN_REM_EL: 5
